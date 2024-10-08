@@ -10,11 +10,11 @@ type WaitingList struct {
 	content int
 }
 
-func NewWaitingList() (w WaitingList) {
+func NewWaitingList(buff_size int) (w WaitingList) {
 	w = WaitingList{
 		channel: new(chan *[]byte),
 	}
-	(*w.channel) = make(chan *[]byte, 5000)
+	(*w.channel) = make(chan *[]byte, buff_size)
 	return w
 }
 
@@ -37,7 +37,7 @@ func (w *WaitingList) GetContent() (b *[]byte) {
 	return <-*w.channel
 }
 
-func (w WaitingList) GetQueueSize() int {
+func (w *WaitingList) GetQueueSize() int {
 	w.mut.Lock()
 	defer w.mut.Unlock()
 	return w.content

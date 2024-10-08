@@ -9,7 +9,7 @@ import (
 func TestFeedAndTake(t *testing.T) {
 	const iterations int = 100
 	var feeder [100][]byte
-	list := NewWaitingList()
+	list := NewWaitingList(iterations)
 	for i := range iterations {
 		feeder[i] = make([]byte, 1920*1080*3)
 		rand.Read(feeder[i])
