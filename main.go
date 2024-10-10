@@ -1,15 +1,17 @@
 package main
 
 import (
-	"fmt"
 	"log"
+	"net/http"
 	"os"
 	"os/signal"
+	"strconv"
 	"strings"
 	"sync"
 	"syscall"
 
 	MQTT "github.com/eclipse/paho.mqtt.golang"
+	"github.com/gorilla/websocket"
 )
 
 var (
@@ -19,7 +21,7 @@ var (
 	password         = "zimzimlegoat"
 	excludedTopics   = []string{"worker/node/#"} // Topics to exclude
 	maxWorkers       = 10                        // Maximum number of concurrent workers
-	messageQueueSize = 100                       // Size of the message queue
+	messageQueueSize = 256                       // Size of the message queue
 )
 
 // Message represents an MQTT message
@@ -39,13 +41,24 @@ func main() {
 	// Buffered channel to act as a message queue
 	messageChan := make(chan Message, messageQueueSize)
 
+	// Create a WorkerManager instance
+	wm := NewWorkerManager()
+
+	// Start the WebSocket server in a goroutine
+	go func() {
+		http.HandleFunc("/ws", workerWebSocketHandler(wm))
+		if err := http.ListenAndServe(":8080", nil); err != nil {
+			log.Fatalf("Failed to start HTTP server: %v", err)
+		}
+	}()
+
 	// Start worker pool
 	for i := 0; i < maxWorkers; i++ {
 		wg.Add(1)
-		go func(workerID int) {
+		go func() {
 			defer wg.Done()
-			worker(messageChan, workerID)
-		}(i)
+			worker(messageChan, wm)
+		}()
 	}
 
 	// MQTT client options
@@ -94,24 +107,24 @@ func main() {
 }
 
 // worker processes messages from the message channel
-func worker(messageChan <-chan Message, workerID int) {
+func worker(messageChan <-chan Message, wm *WorkerManager) {
 	for msg := range messageChan {
-		processMessage(msg, workerID)
+		processMessage(msg, wm)
 	}
 }
 
 // processMessage handles the message processing logic
-func processMessage(msg Message, workerID int) {
-	republishTopic := determineRepublishTopic(msg)
-
-	// TODO: Republish the message to the new topic
-	// For example:
-	// publishMessage(republishTopic, msg.Payload)
-}
-
-func determineRepublishTopic(msg Message) string {
-	// TODO: determine the republish topic
-	return "republish/" + msg.Topic
+func processMessage(msg Message, wm *WorkerManager) {
+	worker := wm.GetNextWorker()
+	if worker == nil {
+		log.Println("No worker connected")
+		return
+	}
+	err := worker.SendMessage(msg.Payload)
+	if err != nil {
+		log.Printf("Error sending message to worker %s: %v", worker.name, err)
+		wm.RemoveWorker(worker.id)
+	}
 }
 
 func shouldExclude(topic string) bool {
@@ -139,7 +152,109 @@ func topicMatches(pattern, topic string) bool {
 	return len(patternParts) == len(topicParts)
 }
 
-func publishMessage(topic string, payload []byte) {
-	// TODO: Implement the publishing logic
-	fmt.Printf("Publishing to topic %s: %s\n", topic, string(payload))
+var upgrader = websocket.Upgrader{
+	CheckOrigin: func(r *http.Request) bool {
+		return true
+	},
+}
+
+// WorkerManager manages connected worker nodes
+type WorkerManager struct {
+	mu              sync.Mutex
+	nextID          int
+	workers         map[int]*WorkerNode
+	roundRobinIndex int
+}
+
+// WorkerNode represents a connected worker node
+type WorkerNode struct {
+	id   int
+	name string
+	conn *websocket.Conn
+	mu   sync.Mutex
+}
+
+func NewWorkerManager() *WorkerManager {
+	return &WorkerManager{
+		workers: make(map[int]*WorkerNode),
+		nextID:  1,
+	}
+}
+
+func (wm *WorkerManager) AddWorker(conn *websocket.Conn) *WorkerNode {
+	wm.mu.Lock()
+	defer wm.mu.Unlock()
+
+	id := wm.nextID
+	wm.nextID++
+
+	name := "worker-node-" + strconv.Itoa(id)
+	worker := &WorkerNode{
+		id:   id,
+		name: name,
+		conn: conn,
+	}
+
+	wm.workers[id] = worker
+	return worker
+}
+
+func (wm *WorkerManager) RemoveWorker(id int) {
+	wm.mu.Lock()
+	defer wm.mu.Unlock()
+	delete(wm.workers, id)
+}
+
+func (wm *WorkerManager) GetNextWorker() *WorkerNode {
+	wm.mu.Lock()
+	defer wm.mu.Unlock()
+	if len(wm.workers) == 0 {
+		return nil
+	}
+	keys := make([]int, 0, len(wm.workers))
+	for k := range wm.workers {
+		keys = append(keys, k)
+	}
+	wm.roundRobinIndex = (wm.roundRobinIndex + 1) % len(keys)
+	workerID := keys[wm.roundRobinIndex]
+	return wm.workers[workerID]
+}
+
+func (worker *WorkerNode) SendMessage(message []byte) error {
+	worker.mu.Lock()
+	defer worker.mu.Unlock()
+	return worker.conn.WriteMessage(websocket.BinaryMessage, message)
+}
+
+func workerWebSocketHandler(wm *WorkerManager) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		conn, err := upgrader.Upgrade(w, r, nil)
+		if err != nil {
+			log.Printf("Failed to upgrade connection: %v", err)
+			return
+		}
+
+		worker := wm.AddWorker(conn)
+		log.Printf("Worker connected: %s", worker.name)
+
+		go handleWorkerConnection(wm, worker)
+	}
+}
+
+func handleWorkerConnection(wm *WorkerManager, worker *WorkerNode) {
+	defer func() {
+		wm.RemoveWorker(worker.id)
+		worker.conn.Close()
+		log.Printf("Worker disconnected: %s", worker.name)
+	}()
+
+	for {
+		_, message, err := worker.conn.ReadMessage()
+		if err != nil {
+			log.Printf("Error reading from %s: %v", worker.name, err)
+			break
+		}
+		// Handle messages from worker nodes if needed
+		log.Printf("Received from %s: %s", worker.name, message)
+	}
 }
