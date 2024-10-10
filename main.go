@@ -36,13 +36,11 @@ func main() {
 	sigChan := make(chan os.Signal, 1)
 	signal.Notify(sigChan, os.Interrupt, syscall.SIGTERM)
 
-	// WaitGroup to wait for all goroutines to finish
 	var wg sync.WaitGroup
 
 	// Buffered channel to act as a message queue
 	messageChan := make(chan Message, messageQueueSize)
 
-	// Create a WorkerManager instance
 	wm := NewWorkerManager()
 
 	// Start the WebSocket server in a goroutine
@@ -62,7 +60,6 @@ func main() {
 		}()
 	}
 
-	// MQTT client options
 	opts := MQTT.NewClientOptions()
 	opts.AddBroker(brokerURI)
 	opts.SetClientID(clientID)
@@ -114,10 +111,7 @@ func worker(messageChan <-chan Message, wm *WorkerManager) {
 	}
 }
 
-// processMessage handles the message processing logic
 func processMessage(msg Message, wm *WorkerManager) {
-	// Assuming msg.Payload contains the raw data that includes video_id, packet_number, etc.
-	// If not, you need to parse or construct the VideoPacket here.
 	var packet VideoPacket
 	err := json.Unmarshal(msg.Payload, &packet)
 	if err != nil {
@@ -175,7 +169,6 @@ var upgrader = websocket.Upgrader{
 	},
 }
 
-// WorkerManager manages connected worker nodes
 type WorkerManager struct {
 	mu              sync.Mutex
 	nextID          int
@@ -183,7 +176,6 @@ type WorkerManager struct {
 	roundRobinIndex int
 }
 
-// WorkerNode represents a connected worker node
 type WorkerNode struct {
 	id   int
 	name string
