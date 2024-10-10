@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/json"
 	"log"
 	"net/http"
 	"os"
@@ -115,12 +116,28 @@ func worker(messageChan <-chan Message, wm *WorkerManager) {
 
 // processMessage handles the message processing logic
 func processMessage(msg Message, wm *WorkerManager) {
+	// Assuming msg.Payload contains the raw data that includes video_id, packet_number, etc.
+	// If not, you need to parse or construct the VideoPacket here.
+	var packet VideoPacket
+	err := json.Unmarshal(msg.Payload, &packet)
+	if err != nil {
+		log.Printf("Error unmarshalling MQTT message: %v", err)
+		return
+	}
+
+	// Convert packet back to JSON to send to the worker
+	dataToSend, err := json.Marshal(packet)
+	if err != nil {
+		log.Printf("Error marshalling packet to JSON: %v", err)
+		return
+	}
+
 	worker := wm.GetNextWorker()
 	if worker == nil {
 		log.Println("No worker connected")
 		return
 	}
-	err := worker.SendMessage(msg.Payload)
+	err = worker.SendMessage(dataToSend)
 	if err != nil {
 		log.Printf("Error sending message to worker %s: %v", worker.name, err)
 		wm.RemoveWorker(worker.id)
@@ -257,4 +274,11 @@ func handleWorkerConnection(wm *WorkerManager, worker *WorkerNode) {
 		// Handle messages from worker nodes if needed
 		log.Printf("Received from %s: %s", worker.name, message)
 	}
+}
+
+type VideoPacket struct {
+	VideoID      string `json:"video_id"`
+	PacketNumber int    `json:"packet_number"`
+	TotalPackets int    `json:"total_packets"` // Use 0 if unknown
+	Data         []byte `json:"data"`
 }
