@@ -34,6 +34,7 @@ func (w *WaitingList) AddContent(b []byte) {
 func (w *WaitingList) GetContent() (b *[]byte) {
 	w.mut.Lock()
 	defer w.mut.Unlock()
+	w.content--
 	return <-*w.channel
 }
 
