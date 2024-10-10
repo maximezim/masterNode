@@ -3,6 +3,8 @@ package main
 import (
 	"encoding/json"
 	"log"
+	"masterNode/loadbalancer"
+	"math/rand"
 	"net/http"
 	"os"
 	"os/signal"
@@ -10,6 +12,7 @@ import (
 	"strings"
 	"sync"
 	"syscall"
+	"time"
 
 	MQTT "github.com/eclipse/paho.mqtt.golang"
 	"github.com/gorilla/websocket"
@@ -32,6 +35,7 @@ type Message struct {
 }
 
 func main() {
+
 	// Create a channel to capture interrupt signals for graceful shutdown
 	sigChan := make(chan os.Signal, 1)
 	signal.Notify(sigChan, os.Interrupt, syscall.SIGTERM)
@@ -51,12 +55,33 @@ func main() {
 		}
 	}()
 
+	policyHandler := loadbalancer.NewPolicyHandler("0.0.0.0:8000")
+
+	// Start accepting load balancer connections
+	go func() {
+		err := policyHandler.AcceptLoadBalancer()
+		if err != nil {
+			log.Fatalf("Failed to accept load balancer connection: %v", err)
+		}
+	}()
+
+	// Start syncing policies
+	go func() {
+		err := policyHandler.SyncPolicy()
+		if err != nil {
+			log.Fatalf("Failed to sync policy: %v", err)
+		}
+	}()
+
+	// Seed the random number generator
+	rand.Seed(time.Now().UnixNano())
+
 	// Start worker pool
 	for i := 0; i < maxWorkers; i++ {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			worker(messageChan, wm)
+			worker(messageChan, wm, &policyHandler)
 		}()
 	}
 
@@ -105,13 +130,13 @@ func main() {
 }
 
 // worker processes messages from the message channel
-func worker(messageChan <-chan Message, wm *WorkerManager) {
+func worker(messageChan <-chan Message, wm *WorkerManager, ph *loadbalancer.PolicyHandler) {
 	for msg := range messageChan {
-		processMessage(msg, wm)
+		processMessage(msg, wm, ph)
 	}
 }
 
-func processMessage(msg Message, wm *WorkerManager) {
+func processMessage(msg Message, wm *WorkerManager, ph *loadbalancer.PolicyHandler) {
 	var packet VideoPacket
 	err := json.Unmarshal(msg.Payload, &packet)
 	if err != nil {
@@ -126,9 +151,11 @@ func processMessage(msg Message, wm *WorkerManager) {
 		return
 	}
 
-	worker := wm.GetNextWorker()
+	policy := ph.GetPolicy()
+
+	worker := wm.GetWorkerBasedOnPolicy(policy)
 	if worker == nil {
-		log.Println("No worker connected")
+		log.Println("No worker connected or no worker matching policy")
 		return
 	}
 	err = worker.SendMessage(dataToSend)
@@ -173,6 +200,7 @@ type WorkerManager struct {
 	mu              sync.Mutex
 	nextID          int
 	workers         map[int]*WorkerNode
+	workersByName   map[string]*WorkerNode
 	roundRobinIndex int
 }
 
@@ -185,8 +213,9 @@ type WorkerNode struct {
 
 func NewWorkerManager() *WorkerManager {
 	return &WorkerManager{
-		workers: make(map[int]*WorkerNode),
-		nextID:  1,
+		workers:       make(map[int]*WorkerNode),
+		workersByName: make(map[string]*WorkerNode),
+		nextID:        1,
 	}
 }
 
@@ -205,13 +234,17 @@ func (wm *WorkerManager) AddWorker(conn *websocket.Conn) *WorkerNode {
 	}
 
 	wm.workers[id] = worker
+	wm.workersByName[name] = worker
 	return worker
 }
 
 func (wm *WorkerManager) RemoveWorker(id int) {
 	wm.mu.Lock()
 	defer wm.mu.Unlock()
-	delete(wm.workers, id)
+	if worker, ok := wm.workers[id]; ok {
+		delete(wm.workersByName, worker.name)
+		delete(wm.workers, id)
+	}
 }
 
 func (wm *WorkerManager) GetNextWorker() *WorkerNode {
@@ -266,6 +299,53 @@ func handleWorkerConnection(wm *WorkerManager, worker *WorkerNode) {
 		// Handle messages from worker nodes if needed
 		log.Printf("Received from %s: %s", worker.name, message)
 	}
+}
+
+func (wm *WorkerManager) GetWorkerBasedOnPolicy(policy map[string]int) *WorkerNode {
+	wm.mu.Lock()
+	defer wm.mu.Unlock()
+
+	totalWeight := 0
+	cumulativeWeights := []int{}
+	workerNodes := []*WorkerNode{}
+
+	for name, weight := range policy {
+		if weight <= 0 {
+			continue
+		}
+		worker, exists := wm.workersByName[name]
+		if !exists {
+			continue
+		}
+		totalWeight += weight
+		cumulativeWeights = append(cumulativeWeights, totalWeight)
+		workerNodes = append(workerNodes, worker)
+	}
+
+	if totalWeight == 0 || len(workerNodes) == 0 {
+		// Fallback to round-robin
+		if len(wm.workers) == 0 {
+			return nil
+		}
+		keys := make([]int, 0, len(wm.workers))
+		for k := range wm.workers {
+			keys = append(keys, k)
+		}
+		wm.roundRobinIndex = (wm.roundRobinIndex + 1) % len(keys)
+		workerID := keys[wm.roundRobinIndex]
+		return wm.workers[workerID]
+	}
+
+	// Generate a random number between 0 and totalWeight - 1
+	r := rand.Intn(totalWeight)
+
+	// Select the worker based on the random number
+	for i, cumWeight := range cumulativeWeights {
+		if r < cumWeight {
+			return workerNodes[i]
+		}
+	}
+	return nil
 }
 
 type VideoPacket struct {
