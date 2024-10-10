@@ -3,6 +3,7 @@ package main
 import (
 	"log"
 	"masterNode/loadbalancer"
+	"masterNode/message"
 	"masterNode/worker"
 	"math/rand"
 	"net/http"
@@ -25,12 +26,6 @@ var (
 	messageQueueSize = 256                       // Size of the message queue
 )
 
-// Message represents an MQTT message
-type Message struct {
-	Topic   string
-	Payload []byte
-}
-
 func main() {
 	// Create a channel to capture interrupt signals for graceful shutdown
 	sigChan := make(chan os.Signal, 1)
@@ -39,7 +34,7 @@ func main() {
 	var wg sync.WaitGroup
 
 	// Buffered channel to act as a message queue
-	messageChan := make(chan Message, messageQueueSize)
+	messageChan := make(chan message.Message, messageQueueSize)
 
 	wm := worker.NewWorkerManager()
 
@@ -92,7 +87,7 @@ func main() {
 			return
 		}
 		// Send the message to the message channel for processing
-		messageChan <- Message{Topic: msg.Topic(), Payload: msg.Payload()}
+		messageChan <- message.Message{Topic: msg.Topic(), Payload: msg.Payload()}
 	})
 	opts.OnConnectionLost = func(client MQTT.Client, err error) {
 		log.Printf("Connection lost: %v", err)

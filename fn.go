@@ -4,18 +4,21 @@ import (
 	"encoding/json"
 	"log"
 	"masterNode/loadbalancer"
+	"masterNode/message"
+	"masterNode/waitinglist"
 	"masterNode/worker"
 	"strings"
 )
 
 // worker processes messages from the message channel
-func ProcessMessageWorker(messageChan <-chan Message, wm *worker.WorkerManager, ph *loadbalancer.PolicyHandler) {
-	for msg := range messageChan {
-		processMessage(msg, wm, ph)
+func ProcessMessageWorker(messageChan *waitinglist.WaitingList, wm *worker.WorkerManager, ph *loadbalancer.PolicyHandler) {
+	for messageChan.GetQueueSize() > 0 {
+		mess := messageChan.GetContent()
+		processMessage(*mess, wm, ph)
 	}
 }
 
-func processMessage(msg Message, wm *worker.WorkerManager, ph *loadbalancer.PolicyHandler) {
+func processMessage(msg message.Message, wm *worker.WorkerManager, ph *loadbalancer.PolicyHandler) {
 	var packet VideoPacket
 	err := json.Unmarshal(msg.Payload, &packet)
 	if err != nil {
