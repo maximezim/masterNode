@@ -29,7 +29,9 @@ func NewPolicyHandler(addrss string) PolicyHandler {
 
 func (p *PolicyHandler) AcceptLoadBalancer() error {
 	var err error
+	p.Lock()
 	p.cli, err = p.srv.Accept()
+	p.Unlock()
 	if err != nil {
 		return err
 	}
@@ -55,9 +57,12 @@ func (p *PolicyHandler) GetPolicy() map[string]int {
 }
 
 func (p *PolicyHandler) fetch_policy() error {
+	p.RLock()
 	if p.cli == nil {
+		p.RUnlock()
 		return errors.New("No lb connected.")
 	}
+	p.RUnlock()
 	lenbuf := make([]byte, 4)
 	n, err := p.cli.Read(lenbuf)
 	if err != nil {
