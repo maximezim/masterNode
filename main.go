@@ -23,9 +23,9 @@ var (
 	username         = os.Getenv("MQTT_USERNAME")
 	password         = os.Getenv("MQTT_PASSWORD")
 	loadBalancerIP   = ":8081"
-	excludedTopics   = []string{"worker/node/#", "#-stream", "#-ping", "#-stats"} // Topics to exclude
-	maxWorkers       = 10                                                         // Maximum number of concurrent workers
-	messageQueueSize = 256                                                        // Size of the message queue
+	excludedTopics   = []string{"worker/node/", "-stream", "-ping", "-stats"} // Topics to exclude
+	maxWorkers       = 10                                                     // Maximum number of concurrent workers
+	messageQueueSize = 256                                                    // Size of the message queue
 )
 
 func main() {
@@ -60,6 +60,7 @@ func main() {
 		if err != nil {
 			log.Fatalf("Failed to sync policy: %v", err)
 		}
+		log.Println("Load balancer connected")
 	}()
 
 	// Seed the random number generator
@@ -79,6 +80,7 @@ func main() {
 	opts.SetClientID(clientID)
 	opts.SetUsername(username)
 	opts.SetPassword(password)
+	opts.SetCleanSession(false)
 	opts.SetDefaultPublishHandler(func(client MQTT.Client, msg MQTT.Message) {
 		// Filter out messages from excluded topics
 		if shouldExclude(msg.Topic()) {
