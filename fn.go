@@ -87,17 +87,8 @@ func processMessage(msg message.Message, wm *worker.WorkerManager, ph *loadbalan
 }
 
 func shouldExclude(topic string) bool {
-	// Exclude topics that start with "worker/node/"
-	if strings.HasPrefix(topic, "worker/node/") {
-		return true
-	}
 	// Exclude topics that end with "-stream", "-ping", or "-stats"
-	for _, suffix := range []string{"-stream", "-ping", "-stats"} {
-		if strings.HasSuffix(topic, suffix) {
-			return true
-		}
-	}
-	return false
+	return !strings.HasPrefix(topic, "video/stream")
 }
 
 // topicMatches checks if a topic matches a pattern with wildcards
