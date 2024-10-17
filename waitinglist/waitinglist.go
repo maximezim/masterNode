@@ -6,7 +6,7 @@ import (
 )
 
 type WaitingList struct {
-	mut     sync.Mutex
+	mut     *sync.Mutex
 	channel *chan *message.Message
 	content int
 }
@@ -14,7 +14,9 @@ type WaitingList struct {
 func NewWaitingList(buff_size int) (w WaitingList) {
 	w = WaitingList{
 		channel: new(chan *message.Message),
+		mut:     new(sync.Mutex),
 	}
+	*w.mut = sync.Mutex{}
 	(*w.channel) = make(chan *message.Message, buff_size)
 	return w
 }
