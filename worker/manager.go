@@ -1,6 +1,7 @@
 package worker
 
 import (
+	"encoding/json"
 	"log"
 	"math/rand"
 	"net/http"
@@ -85,6 +86,18 @@ func WorkerWebSocketHandler(wm *WorkerManager) http.HandlerFunc {
 
 		worker := wm.AddWorker(conn)
 		log.Printf("Worker connected: %s", worker.Name)
+
+		// Send assigned worker name to the worker node
+		assignedNameMessage := map[string]string{"worker_name": worker.Name}
+		messageBytes, err := json.Marshal(assignedNameMessage)
+		if err != nil {
+			log.Printf("Error marshalling assigned name: %v", err)
+			return
+		}
+		if err := worker.conn.WriteMessage(websocket.TextMessage, messageBytes); err != nil {
+			log.Printf("Error sending assigned name to worker: %v", err)
+			return
+		}
 
 		go handleWorkerConnection(wm, worker)
 	}
