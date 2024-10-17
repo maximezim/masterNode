@@ -20,7 +20,7 @@ func ProcessMessageWorker(messageChan *waitinglist.WaitingList, wm *worker.Worke
 
 		// Check if the message is a video packet
 		if strings.HasPrefix(msg.Topic, "video/stream") {
-			var videoPacket VideoPacket
+			var videoPacket VideoPacketSIS
 			err := json.Unmarshal(msg.Payload, &videoPacket)
 			if err != nil {
 				log.Printf("Error unmarshalling video packet: %v", err)
@@ -49,7 +49,7 @@ func ProcessMessageWorker(messageChan *waitinglist.WaitingList, wm *worker.Worke
 				continue
 			}
 
-			log.Printf("Sent video packet %d to worker %s", videoPacket.PacketNumber, workerNode.Name)
+			log.Printf("Sent video packet to worker %s", workerNode.Name)
 		} else {
 			// Handle other message types if needed
 			log.Printf("Received non-video message on topic %s", msg.Topic)

@@ -123,6 +123,12 @@ func main() {
 	log.Println("Shutdown complete")
 }
 
+type VideoPacketSIS struct {
+	MsgPackPacket []byte `msgpack:"packet"`
+	A             []byte `msgpack:"a"`
+	V             []byte `msgpack:"v"`
+}
+
 type VideoPacket struct {
 	VideoID      string `json:"video_id"`
 	PacketNumber int    `json:"packet_number"`
