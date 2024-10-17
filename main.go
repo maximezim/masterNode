@@ -18,10 +18,11 @@ import (
 )
 
 var (
-	brokerURI        = "tcp://remicaulier.fr:1883"
-	clientID         = "master-node"
-	username         = "viewer"
-	password         = "zimzimlegoat"
+	brokerURI        = os.Getenv("MQTT_BROKER_URI")
+	clientID         = os.Getenv("MQTT_CLIENT_ID")
+	username         = os.Getenv("MQTT_USERNAME")
+	password         = os.Getenv("MQTT_PASSWORD")
+	loadBalancerIP   = os.Getenv("LOAD_BALANCER_IP")
 	excludedTopics   = []string{"worker/node/#"} // Topics to exclude
 	maxWorkers       = 10                        // Maximum number of concurrent workers
 	messageQueueSize = 256                       // Size of the message queue
@@ -47,7 +48,7 @@ func main() {
 		}
 	}()
 
-	policyHandler := loadbalancer.NewPolicyHandler("0.0.0.0:8000")
+	policyHandler := loadbalancer.NewPolicyHandler(loadBalancerIP)
 
 	// Start accepting load balancer connections
 	go func() {
