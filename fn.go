@@ -11,10 +11,49 @@ import (
 )
 
 // worker processes messages from the message channel
-func ProcessMessageWorker(messageChan *waitinglist.WaitingList, wm *worker.WorkerManager, ph *loadbalancer.PolicyHandler) {
-	for messageChan.GetQueueSize() > 0 {
-		mess := messageChan.GetContent()
-		processMessage(*mess, wm, ph)
+func ProcessMessageWorker(messageChan *waitinglist.WaitingList, wm *worker.WorkerManager, policyHandler *loadbalancer.PolicyHandler) {
+	for {
+		msg := messageChan.GetContent()
+		if msg == nil {
+			break
+		}
+
+		// Check if the message is a video packet
+		if strings.HasPrefix(msg.Topic, "video/stream") {
+			var videoPacket VideoPacket
+			err := json.Unmarshal(msg.Payload, &videoPacket)
+			if err != nil {
+				log.Printf("Error unmarshalling video packet: %v", err)
+				continue
+			}
+
+			// Get a worker node based on the load-balancing policy
+			workerNode := wm.GetWorkerBasedOnPolicy(policyHandler.GetPolicy())
+			if workerNode == nil {
+				log.Printf("No available worker nodes to send video packet")
+				continue
+			}
+
+			// Serialize the video packet to JSON
+			packetBytes, err := json.Marshal(videoPacket)
+			if err != nil {
+				log.Printf("Error marshalling video packet: %v", err)
+				continue
+			}
+
+			// Send the video packet to the worker node
+			err = workerNode.SendMessage(packetBytes)
+			if err != nil {
+				log.Printf("Error sending video packet to worker %s: %v", workerNode.Name, err)
+				wm.RemoveWorker(workerNode.Id)
+				continue
+			}
+
+			log.Printf("Sent video packet %d to worker %s", videoPacket.PacketNumber, workerNode.Name)
+		} else {
+			// Handle other message types if needed
+			log.Printf("Received non-video message on topic %s", msg.Topic)
+		}
 	}
 }
 

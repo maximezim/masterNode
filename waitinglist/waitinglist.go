@@ -22,8 +22,7 @@ func NewWaitingList(buff_size int) (w WaitingList) {
 func (w *WaitingList) AddContent(b message.Message) {
 	w.mut.Lock()
 	defer w.mut.Unlock()
-	var x *message.Message
-	x = new(message.Message)
+	x := new(message.Message)
 	*x = message.Message{
 		Topic:   b.Topic,
 		Payload: make([]byte, len(b.Payload)),
@@ -38,8 +37,15 @@ func (w *WaitingList) AddContent(b message.Message) {
 func (w *WaitingList) GetContent() (b *message.Message) {
 	w.mut.Lock()
 	defer w.mut.Unlock()
+	if w.channel == nil {
+		return nil
+	}
+	msg, ok := <-*w.channel
+	if !ok {
+		return nil
+	}
 	w.content--
-	return <-*w.channel
+	return msg
 }
 
 func (w *WaitingList) GetQueueSize() int {
