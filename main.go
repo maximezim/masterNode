@@ -82,6 +82,8 @@ func main() {
 	opts.SetUsername(username)
 	opts.SetPassword(password)
 	opts.SetCleanSession(false)
+	opts.SetKeepAlive(60 * time.Second) // Ensure keep-alive is set appropriately
+	opts.SetPingTimeout(10 * time.Second)
 	opts.SetDefaultPublishHandler(func(client MQTT.Client, msg MQTT.Message) {
 		// Filter out messages from excluded topics
 		if shouldExclude(msg.Topic()) {

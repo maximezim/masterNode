@@ -3,6 +3,7 @@ package loadbalancer
 import (
 	"encoding/binary"
 	"errors"
+	"fmt"
 	"net"
 	"sync"
 
@@ -87,6 +88,6 @@ func (p *PolicyHandler) fetch_policy() error {
 	p.Lock()
 	msgpack.Unmarshal(buff, &p.P)
 	p.Unlock()
-	// fmt.Println(p.P)
+	fmt.Println(p.P)
 	return nil
 }
