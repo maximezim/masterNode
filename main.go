@@ -22,7 +22,7 @@ var (
 	clientID         = os.Getenv("MQTT_CLIENT_ID")
 	username         = os.Getenv("MQTT_USERNAME")
 	password         = os.Getenv("MQTT_PASSWORD")
-	loadBalancerIP   = os.Getenv("LOAD_BALANCER_IP")
+	loadBalancerIP   = ":8081"
 	excludedTopics   = []string{"worker/node/#"} // Topics to exclude
 	maxWorkers       = 10                        // Maximum number of concurrent workers
 	messageQueueSize = 256                       // Size of the message queue
@@ -56,11 +56,7 @@ func main() {
 		if err != nil {
 			log.Fatalf("Failed to accept load balancer connection: %v", err)
 		}
-	}()
-
-	// Start syncing policies
-	go func() {
-		err := policyHandler.SyncPolicy()
+		err = policyHandler.SyncPolicy()
 		if err != nil {
 			log.Fatalf("Failed to sync policy: %v", err)
 		}
