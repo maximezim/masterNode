@@ -3,6 +3,7 @@ package waitinglist
 import (
 	"bytes"
 	"crypto/rand"
+	"masterNode/message"
 	"testing"
 )
 
@@ -13,11 +14,11 @@ func TestFeedAndTake(t *testing.T) {
 	for i := range iterations {
 		feeder[i] = make([]byte, 1920*1080*3)
 		rand.Read(feeder[i])
-		list.AddContent(feeder[i])
+		list.AddContent(message.Message{Payload: feeder[i]})
 	}
 	for i := range iterations {
 		b := list.GetContent()
-		if !bytes.Equal(feeder[i], *b) {
+		if !bytes.Equal(feeder[i], b.Payload) {
 			t.Error()
 			return
 		}

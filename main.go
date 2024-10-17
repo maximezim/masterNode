@@ -4,6 +4,7 @@ import (
 	"log"
 	"masterNode/loadbalancer"
 	"masterNode/message"
+	"masterNode/waitinglist"
 	"masterNode/worker"
 	"math/rand"
 	"net/http"
@@ -34,7 +35,7 @@ func main() {
 	var wg sync.WaitGroup
 
 	// Buffered channel to act as a message queue
-	messageChan := make(chan message.Message, messageQueueSize)
+	messageChan := waitinglist.NewWaitingList(messageQueueSize)
 
 	wm := worker.NewWorkerManager()
 
@@ -72,7 +73,7 @@ func main() {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			ProcessMessageWorker(messageChan, wm, &policyHandler)
+			ProcessMessageWorker(&messageChan, wm, &policyHandler)
 		}()
 	}
 
@@ -87,7 +88,7 @@ func main() {
 			return
 		}
 		// Send the message to the message channel for processing
-		messageChan <- message.Message{Topic: msg.Topic(), Payload: msg.Payload()}
+		messageChan.AddContent(message.Message{Topic: msg.Topic(), Payload: msg.Payload()})
 	})
 	opts.OnConnectionLost = func(client MQTT.Client, err error) {
 		log.Printf("Connection lost: %v", err)
@@ -115,8 +116,8 @@ func main() {
 	log.Println("Interrupt signal received, shutting down...")
 
 	// Clean up
-	close(messageChan) // Close the message channel to stop workers
-	wg.Wait()          // Wait for all workers to finish
+	messageChan.CleanUp() // Close the message channel to stop workers
+	wg.Wait()             // Wait for all workers to finish
 	log.Println("Shutdown complete")
 }
 

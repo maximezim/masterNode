@@ -47,3 +47,8 @@ func (w *WaitingList) GetQueueSize() int {
 	defer w.mut.Unlock()
 	return w.content
 }
+
+func (w *WaitingList) CleanUp() {
+	close(*(w.channel))
+	w.channel = nil
+}
