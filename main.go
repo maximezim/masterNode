@@ -1,6 +1,7 @@
 package main
 
 import (
+	"fmt"
 	"log"
 	"masterNode/loadbalancer"
 	"masterNode/message"
@@ -56,11 +57,11 @@ func main() {
 		if err != nil {
 			log.Fatalf("Failed to accept load balancer connection: %v", err)
 		}
+		fmt.Println("Load balancer connected")
 		err = policyHandler.SyncPolicy()
 		if err != nil {
 			log.Fatalf("Failed to sync policy: %v", err)
 		}
-		log.Println("Load balancer connected")
 	}()
 
 	// Seed the random number generator
