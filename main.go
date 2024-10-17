@@ -88,7 +88,7 @@ func main() {
 			fmt.Printf("Excluded message: %s\n", msg.Topic())
 			return
 		}
-		fmt.Printf("Received message: %s\n", msg.Payload())
+		// fmt.Printf("Received message: %s\n", msg.Payload())
 		// Send the message to the message channel for processing
 		messageChan.AddContent(message.Message{Topic: msg.Topic(), Payload: msg.Payload()})
 	})
