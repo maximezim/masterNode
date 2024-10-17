@@ -1,13 +1,14 @@
 package main
 
 import (
-	"encoding/json"
 	"log"
 	"masterNode/loadbalancer"
 	"masterNode/message"
 	"masterNode/waitinglist"
 	"masterNode/worker"
 	"strings"
+
+	"github.com/vmihailenco/msgpack"
 )
 
 // worker processes messages from the message channel
@@ -21,7 +22,7 @@ func ProcessMessageWorker(messageChan *waitinglist.WaitingList, wm *worker.Worke
 		// Check if the message is a video packet
 		if strings.HasPrefix(msg.Topic, "video/stream") {
 			var videoPacket VideoPacket
-			err := json.Unmarshal(msg.Payload, &videoPacket)
+			err := msgpack.Unmarshal(msg.Payload, &videoPacket)
 			if err != nil {
 				log.Printf("Error unmarshalling video packet: %v", err)
 				continue
@@ -35,7 +36,7 @@ func ProcessMessageWorker(messageChan *waitinglist.WaitingList, wm *worker.Worke
 			}
 
 			// Serialize the video packet to JSON
-			packetBytes, err := json.Marshal(videoPacket)
+			packetBytes, err := msgpack.Marshal(videoPacket)
 			if err != nil {
 				log.Printf("Error marshalling video packet: %v", err)
 				continue
@@ -59,16 +60,16 @@ func ProcessMessageWorker(messageChan *waitinglist.WaitingList, wm *worker.Worke
 
 func processMessage(msg message.Message, wm *worker.WorkerManager, ph *loadbalancer.PolicyHandler) {
 	var packet VideoPacket
-	err := json.Unmarshal(msg.Payload, &packet)
+	err := msgpack.Unmarshal(msg.Payload, &packet)
 	if err != nil {
 		log.Printf("Error unmarshalling MQTT message: %v", err)
 		return
 	}
 
 	// Convert packet back to JSON to send to the worker
-	dataToSend, err := json.Marshal(packet)
+	dataToSend, err := msgpack.Marshal(packet)
 	if err != nil {
-		log.Printf("Error marshalling packet to JSON: %v", err)
+		log.Printf("Error marshalling packet to msgpack: %v", err)
 		return
 	}
 
