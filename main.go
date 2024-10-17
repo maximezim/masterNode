@@ -23,9 +23,9 @@ var (
 	username         = os.Getenv("MQTT_USERNAME")
 	password         = os.Getenv("MQTT_PASSWORD")
 	loadBalancerIP   = os.Getenv("LOAD_BALANCER_IP")
-	excludedTopics   = []string{"worker/node/#"} // Topics to exclude
-	maxWorkers       = 10                        // Maximum number of concurrent workers
-	messageQueueSize = 256                       // Size of the message queue
+	excludedTopics   = []string{"worker/node/#", "#-stream", "#-ping", "#-stats"} // Topics to exclude
+	maxWorkers       = 10                                                         // Maximum number of concurrent workers
+	messageQueueSize = 256                                                        // Size of the message queue
 )
 
 func main() {
