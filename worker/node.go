@@ -16,5 +16,5 @@ type WorkerNode struct {
 func (worker *WorkerNode) SendMessage(message []byte) error {
 	worker.mu.Lock()
 	defer worker.mu.Unlock()
-	return worker.conn.WriteMessage(websocket.TextMessage, message)
+	return worker.conn.WriteMessage(websocket.BinaryMessage, message)
 }
