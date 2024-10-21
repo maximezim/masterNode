@@ -85,7 +85,7 @@ func main() {
 	opts.SetDefaultPublishHandler(func(client MQTT.Client, msg MQTT.Message) {
 		// Filter out messages from excluded topics
 		if shouldExclude(msg.Topic()) {
-			fmt.Printf("Excluded message: %s\n", msg.Topic())
+			// fmt.Printf("Excluded message: %s\n", msg.Topic())
 			return
 		}
 		// fmt.Printf("Received message: %s\n", msg.Payload())
