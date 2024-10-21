@@ -7,6 +7,7 @@ import (
 	"masterNode/waitinglist"
 	"masterNode/worker"
 	"strings"
+	"time"
 
 	"github.com/vmihailenco/msgpack"
 )
@@ -57,6 +58,7 @@ func ProcessMessageWorker(messageChan *waitinglist.WaitingList, wm *worker.Worke
 				log.Printf("Received non-video message on topic %s", msg.Topic)
 			}
 		}
+		time.Sleep(1 * time.Millisecond)
 	}
 }
 
