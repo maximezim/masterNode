@@ -6,6 +6,7 @@ import (
 	"log"
 	"masterNode/loadbalancer"
 	"masterNode/message"
+	"masterNode/secondary"
 	"masterNode/waitinglist"
 	"masterNode/worker"
 	"math/rand"
@@ -24,19 +25,21 @@ var (
 	clientID         = os.Getenv("MQTT_CLIENT_ID")
 	username         = os.Getenv("MQTT_USERNAME")
 	password         = os.Getenv("MQTT_PASSWORD")
-	other_edges      []string
+	otherEdgesEnv    = os.Getenv("OTHER_EDGES")
 	loadBalancerIP   = ":8081"
-	excludedTopics   = []string{"worker/node/", "-stream", "-ping", "-stats"} // Topics to exclude
-	maxWorkers       = 10                                                     // Maximum number of concurrent workers
-	messageQueueSize = 256                                                    // Size of the message queue
+	maxWorkers       = 10  // Maximum number of concurrent workers
+	messageQueueSize = 256 // Size of the message queue
 )
 
 func main() {
-	err := json.Unmarshal([]byte(os.Getenv("OTHER_EDGES")), &other_edges)
+	var other_edges []string
+	err := json.Unmarshal([]byte(otherEdgesEnv), &other_edges)
 	if err != nil {
+		log.Printf("Error unmarshalling OTHER_EDGES: %v", err)
 		other_edges = []string{}
 	}
-	log.Printf("Other edges : %v", other_edges)
+	log.Printf("Other edges: %v", other_edges)
+
 	// Create a channel to capture interrupt signals for graceful shutdown
 	sigChan := make(chan os.Signal, 1)
 	signal.Notify(sigChan, os.Interrupt, syscall.SIGTERM)
@@ -90,12 +93,9 @@ func main() {
 	opts.SetPassword(password)
 	opts.SetCleanSession(false)
 	opts.SetDefaultPublishHandler(func(client MQTT.Client, msg MQTT.Message) {
-		// Filter out messages from excluded topics
-		if shouldExclude(msg.Topic()) {
-			// fmt.Printf("Excluded message: %s\n", msg.Topic())
+		if shouldExclude(msg.Topic()) || msg.Topic() == "packet-request" {
 			return
 		}
-		// fmt.Printf("Received message: %s\n", msg.Payload())
 		// Send the message to the message channel for processing
 		messageChan.AddContent(message.Message{Topic: msg.Topic(), Payload: msg.Payload()})
 	})
@@ -106,19 +106,28 @@ func main() {
 		log.Printf("Attempting to reconnect...")
 	}
 
-	// Create and start the client
-	client := MQTT.NewClient(opts)
-	if token := client.Connect(); token.Wait() && token.Error() != nil {
+	mainClient := MQTT.NewClient(opts)
+	if token := mainClient.Connect(); token.Wait() && token.Error() != nil {
 		log.Fatalf("Error connecting to broker: %v", token.Error())
 	}
-	defer client.Disconnect(250)
+	defer mainClient.Disconnect(250)
 	log.Println("Connected to MQTT broker")
 
 	// Subscribe to all topics
-	if token := client.Subscribe("#", 0, nil); token.Wait() && token.Error() != nil {
+	if token := mainClient.Subscribe("#", 0, nil); token.Wait() && token.Error() != nil {
 		log.Fatalf("Error subscribing to topics: %v", token.Error())
 	}
 	log.Println("Subscribed to all topics")
+
+	// Initialize InterconnectManager for secondary master nodes
+	interconnectManager := secondary.NewInterconnectManager(other_edges, mainClient)
+	interconnectManager.Start()
+
+	// Subscribe to "packet-request" with a specific handler
+	if token := mainClient.Subscribe("packet-request", 0, interconnectManager.HandlePacketRequest); token.Wait() && token.Error() != nil {
+		log.Fatalf("Error subscribing to 'packet-request' topic: %v", token.Error())
+	}
+	log.Println("Subscribed to 'packet-request' topic")
 
 	// Wait for interrupt signal
 	<-sigChan
@@ -127,6 +136,9 @@ func main() {
 	// Clean up
 	messageChan.CleanUp() // Close the message channel to stop workers
 	wg.Wait()             // Wait for all workers to finish
+
+	interconnectManager.Stop()
+
 	log.Println("Shutdown complete")
 }
 
