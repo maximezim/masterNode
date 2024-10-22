@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/json"
 	"fmt"
 	"log"
 	"masterNode/loadbalancer"
@@ -23,6 +24,7 @@ var (
 	clientID         = os.Getenv("MQTT_CLIENT_ID")
 	username         = os.Getenv("MQTT_USERNAME")
 	password         = os.Getenv("MQTT_PASSWORD")
+	other_edges      []string
 	loadBalancerIP   = ":8081"
 	excludedTopics   = []string{"worker/node/", "-stream", "-ping", "-stats"} // Topics to exclude
 	maxWorkers       = 10                                                     // Maximum number of concurrent workers
@@ -30,6 +32,11 @@ var (
 )
 
 func main() {
+	err := json.Unmarshal([]byte(os.Getenv("OTHER_EDGES")), &other_edges)
+	if err != nil {
+		other_edges = []string{}
+	}
+	log.Printf("Other edges : %v", other_edges)
 	// Create a channel to capture interrupt signals for graceful shutdown
 	sigChan := make(chan os.Signal, 1)
 	signal.Notify(sigChan, os.Interrupt, syscall.SIGTERM)
