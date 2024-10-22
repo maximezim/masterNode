@@ -1,8 +1,10 @@
+// secondary.go
 package secondary
 
 import (
 	"encoding/json"
 	"log"
+	"strings"
 	"sync"
 
 	MQTT "github.com/eclipse/paho.mqtt.golang"
@@ -69,9 +71,11 @@ func (im *InterconnectManager) HandlePacketRequest(client MQTT.Client, msg MQTT.
 	log.Printf("Received PacketRequest: %+v", req)
 
 	im.forwardPacketRequest(msg.Payload())
-	im.subscribeToChannelUUID(req.ChannelUUID)
+	serverChannelUUID := "server" + req.ChannelUUID
+	im.subscribeToChannelUUID(serverChannelUUID)
 }
 
+// forwardPacketRequest publishes the packet-request to all other brokers
 func (im *InterconnectManager) forwardPacketRequest(payload []byte) {
 	for _, client := range im.clients {
 		if client.client.IsConnected() {
@@ -106,8 +110,18 @@ func (im *InterconnectManager) subscribeToChannelUUID(channelUUID string) {
 }
 
 func (im *InterconnectManager) handleChannelUUIDMessage(client MQTT.Client, msg MQTT.Message) {
-	log.Printf("Received message on topic %s from other broker, forwarding to main broker", msg.Topic())
-	im.mainClient.Publish(msg.Topic(), msg.Qos(), msg.Retained(), msg.Payload())
+	topic := msg.Topic()
+	// Check if the topic starts with 'server'
+	if strings.HasPrefix(topic, "server") {
+		// Strip the 'server' prefix
+		originalTopic := strings.TrimPrefix(topic, "server")
+		log.Printf("Received message on topic %s from other broker, forwarding to main broker as %s", topic, originalTopic)
+		// Publish the received message to the main MQTT broker without the 'server' prefix
+		im.mainClient.Publish(originalTopic, msg.Qos(), msg.Retained(), msg.Payload())
+	} else {
+		// If the topic does not start with 'server', ignore to prevent loops
+		log.Printf("Received message on non-server topic %s, ignoring to prevent loop", topic)
+	}
 }
 
 func (oc *OtherMQTTClient) init() {
