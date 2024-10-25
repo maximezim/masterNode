@@ -14,6 +14,7 @@ type PacketRequest struct {
 	VideoID      string `json:"video_id"`
 	PacketNumber int    `json:"packet_number"`
 	ChannelUUID  string `json:"channel_uuid"`
+	IsForwarded  bool   `json:"is_forwarded"` // Add this field
 }
 
 type InterconnectManager struct {
@@ -68,11 +69,25 @@ func (im *InterconnectManager) HandlePacketRequest(client MQTT.Client, msg MQTT.
 		log.Printf("Error unmarshalling PacketRequest: %v", err)
 		return
 	}
-	log.Printf("Received PacketRequest: %+v", req)
 
-	im.forwardPacketRequest(msg.Payload())
+	// Skip if this is a forwarded request to prevent loops
+	if req.IsForwarded {
+		log.Printf("Received forwarded request, skipping to prevent loops: %+v", req)
+		return
+	}
+
+	log.Printf("Received PacketRequest: %+v", req)
 	serverChannelUUID := "server" + req.ChannelUUID
 	im.subscribeToChannelUUID(serverChannelUUID)
+
+	// Mark the request as forwarded before sending to other nodes
+	req.IsForwarded = true
+	forwardPayload, err := json.Marshal(req)
+	if err != nil {
+		log.Printf("Error marshalling forwarded request: %v", err)
+		return
+	}
+	im.forwardPacketRequest(forwardPayload)
 }
 
 // forwardPacketRequest publishes the packet-request to all other brokers
@@ -80,9 +95,8 @@ func (im *InterconnectManager) forwardPacketRequest(payload []byte) {
 	for _, client := range im.clients {
 		if client.client.IsConnected() {
 			token := client.client.Publish("packet-request", 0, false, payload)
-			token.Wait()
 			if token.Error() != nil {
-				log.Printf("Error publishing to broker %s: %v", client.brokerURI, token.Error())
+				log.Printf("Error publishing to broker %s", client.brokerURI)
 			} else {
 				log.Printf("Forwarded packet-request to broker %s", client.brokerURI)
 			}
