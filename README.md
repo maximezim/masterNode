@@ -51,7 +51,7 @@ Ce projet utilise plusieurs variables d’environnement pour configurer la conne
 
 ## Comment Configurer les Variables
 
-Pour définir ces variables d'environnement, utilisez la commande `export` dans votre terminal (pour Unix/Linux/macOS), ou ajoutez-les à votre fichier `.env` si vous utilisez un outil tel que `dotenv`. Exemple :
+Pour définir ces variables d'environnement, utilisez la commande `export`, ou ajoutez-les au fichier `.env`. Exemple :
 
 ```bash
 export MQTT_BROKER_URI="tcp://localhost:1883"
