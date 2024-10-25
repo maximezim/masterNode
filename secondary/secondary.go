@@ -77,8 +77,10 @@ func (im *InterconnectManager) HandlePacketRequest(client MQTT.Client, msg MQTT.
 	}
 
 	log.Printf("Received PacketRequest: %+v", req)
-	serverChannelUUID := "server" + req.ChannelUUID
-	im.subscribeToChannelUUID(serverChannelUUID)
+	
+	// Subscribe to both the original channel UUID and server-prefixed version
+	im.subscribeToChannelUUID(req.ChannelUUID)
+	im.subscribeToChannelUUID("server" + req.ChannelUUID)
 
 	// Mark the request as forwarded before sending to other nodes
 	req.IsForwarded = true
@@ -107,34 +109,53 @@ func (im *InterconnectManager) forwardPacketRequest(payload []byte) {
 }
 
 func (im *InterconnectManager) subscribeToChannelUUID(channelUUID string) {
+	// Subscribe on the main client to handle local messages
+	token := im.mainClient.Subscribe(channelUUID, 0, im.handleChannelUUIDMessage)
+	token.Wait()
+	if token.Error() != nil {
+		log.Printf("Error subscribing to topic %s on main broker: %v", channelUUID, token.Error())
+	} else {
+		log.Printf("Subscribed to topic %s on main broker", channelUUID)
+	}
+
+	// Subscribe on all other clients
 	for _, client := range im.clients {
 		if client.client.IsConnected() {
-			topic := channelUUID
-			token := client.client.Subscribe(topic, 0, im.handleChannelUUIDMessage)
+			token := client.client.Subscribe(channelUUID, 0, im.handleChannelUUIDMessage)
 			token.Wait()
 			if token.Error() != nil {
-				log.Printf("Error subscribing to topic %s on broker %s: %v", topic, client.brokerURI, token.Error())
+				log.Printf("Error subscribing to topic %s on broker %s: %v", channelUUID, client.brokerURI, token.Error())
 			} else {
-				log.Printf("Subscribed to topic %s on broker %s", topic, client.brokerURI)
+				log.Printf("Subscribed to topic %s on broker %s", channelUUID, client.brokerURI)
 			}
-		} else {
-			log.Printf("Cannot subscribe to broker %s: not connected", client.brokerURI)
 		}
 	}
 }
 
 func (im *InterconnectManager) handleChannelUUIDMessage(client MQTT.Client, msg MQTT.Message) {
 	topic := msg.Topic()
-	// Check if the topic starts with 'server'
+	payload := msg.Payload()
+	
 	if strings.HasPrefix(topic, "server") {
-		// Strip the 'server' prefix
+		// Message from another broker - forward to local broker without "server" prefix
 		originalTopic := strings.TrimPrefix(topic, "server")
 		log.Printf("Received message on topic %s from other broker, forwarding to main broker as %s", topic, originalTopic)
-		// Publish the received message to the main MQTT broker without the 'server' prefix
-		im.mainClient.Publish(originalTopic, msg.Qos(), msg.Retained(), msg.Payload())
+		token := im.mainClient.Publish(originalTopic, msg.Qos(), msg.Retained(), payload)
+		if token.Wait() && token.Error() != nil {
+			log.Printf("Error forwarding message to main broker: %v", token.Error())
+		}
 	} else {
-		// If the topic does not start with 'server', ignore to prevent loops
-		log.Printf("Received message on non-server topic %s, ignoring to prevent loop", topic)
+		// Message from local broker - forward to other brokers with "server" prefix
+		serverTopic := "server" + topic
+		log.Printf("Received message on topic %s from main broker, forwarding to other brokers as %s", topic, serverTopic)
+		for _, client := range im.clients {
+			if client.client.IsConnected() {
+				token := client.client.Publish(serverTopic, msg.Qos(), msg.Retained(), payload)
+				if token.Wait() && token.Error() != nil {
+					log.Printf("Error forwarding message to broker %s: %v", client.brokerURI, token.Error())
+				}
+			}
+		}
 	}
 }
 
